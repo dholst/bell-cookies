@@ -12,6 +12,7 @@ const tokens = {};
 
 (async () => {
     const server = new Hapi.Server({port: PORT});
+    server.ext('onPreAuth', onPreAuth);
     server.ext('onPreResponse', onPreResponse);
 
     await server.register(Vision);
@@ -45,13 +46,19 @@ const tokens = {};
 
     server.route({
         method: 'GET',
-        path: '/authenticated',
-        options: {
-            auth: 'local',
-            handler: request => `👋 ${request.auth.credentials.profile.id}`
-        }
+        path: '/login',
+        handler: request => `👋 ${request.auth.credentials.profile.id}`,
+        options: {auth: 'local'}
     });
 
+    server.route({
+        method: 'GET',
+        path: '/login-later',
+        handler: (request, h) =>
+            new Promise(resolve => {
+                setTimeout(() => resolve(h.redirect('/login')), 1000);
+            })
+    });
 
     server.route({
         method: 'POST',
@@ -95,6 +102,18 @@ const tokens = {};
     await server.start();
     console.log('Server running at:', server.info.uri);
 })();
+
+function onPreAuth(request, h) {
+    const bellCookie = request.state['bell-custom'];
+    const {oauth_token, oauth_verifier} = request.query;
+    const isThirdLeg = oauth_token && oauth_verifier;
+
+    if (isThirdLeg && (!bellCookie || bellCookie.token !== oauth_token)) {
+        return h.redirect('/login-later').takeover();
+    }
+
+    return h.continue;
+}
 
 function onPreResponse(request, h) {
     const statusCode =
